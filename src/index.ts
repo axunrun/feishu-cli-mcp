@@ -139,7 +139,7 @@ function buildServer() {
     },
     async () => {
       return toolResult(await runLarkCli({
-        args: ['auth', 'status', '--format', 'json'],
+        args: ['auth', 'status'],
         intent: 'read'
       }));
     }
