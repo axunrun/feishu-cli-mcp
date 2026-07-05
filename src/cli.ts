@@ -14,6 +14,7 @@ export type CliResult = {
   stderr: string;
   json: unknown | null;
   truncated: boolean;
+  timedOut: boolean;
   risk: string;
   nextSteps: string[];
 };
@@ -75,6 +76,7 @@ export async function runLarkCli(options: RunOptions): Promise<CliResult> {
       stderr: '',
       json: null,
       truncated: false,
+      timedOut: false,
       risk,
       nextSteps: [
         'For write/auth commands, call lark_cli_schema or lark_cli_help first.',
@@ -99,6 +101,7 @@ export async function runLarkCli(options: RunOptions): Promise<CliResult> {
     let stdout = Buffer.alloc(0);
     let stderr = Buffer.alloc(0);
     let truncated = false;
+    let settled = false;
 
     const collect = (current: Buffer, chunk: Buffer) => {
       const next = Buffer.concat([current, chunk]);
@@ -108,7 +111,18 @@ export async function runLarkCli(options: RunOptions): Promise<CliResult> {
     };
 
     const timer = setTimeout(() => {
+      if (settled) return;
       child.kill('SIGTERM');
+      settled = true;
+      resolve(formatResult({
+        args: options.args,
+        exitCode: null,
+        stdout: stdout.toString('utf8'),
+        stderr: appendLine(stderr.toString('utf8'), `Timed out after ${timeoutMs}ms.`),
+        truncated,
+        timedOut: true,
+        risk
+      }));
     }, timeoutMs);
 
     child.stdout.on('data', (chunk: Buffer) => {
@@ -120,6 +134,8 @@ export async function runLarkCli(options: RunOptions): Promise<CliResult> {
     });
 
     child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve(formatResult({
         args: options.args,
@@ -127,11 +143,14 @@ export async function runLarkCli(options: RunOptions): Promise<CliResult> {
         stdout: '',
         stderr: error.message,
         truncated,
+        timedOut: false,
         risk
       }));
     });
 
     child.on('close', (exitCode) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve(formatResult({
         args: options.args,
@@ -139,6 +158,7 @@ export async function runLarkCli(options: RunOptions): Promise<CliResult> {
         stdout: stdout.toString('utf8'),
         stderr: stderr.toString('utf8'),
         truncated,
+        timedOut: false,
         risk
       }));
     });
@@ -151,6 +171,7 @@ function formatResult(input: {
   stdout: string;
   stderr: string;
   truncated: boolean;
+  timedOut: boolean;
   risk: string;
 }): CliResult {
   const json = parseJson(input.stdout);
@@ -163,8 +184,9 @@ function formatResult(input: {
     stderr: input.stderr,
     json,
     truncated: input.truncated,
+    timedOut: input.timedOut,
     risk: input.risk,
-    nextSteps: nextSteps(input.exitCode, input.stderr, json)
+    nextSteps: nextSteps(input.exitCode, input.stderr, json, input.timedOut)
   };
 }
 
@@ -178,7 +200,11 @@ function parseJson(stdout: string) {
   }
 }
 
-function nextSteps(exitCode: number | null, stderr: string, json: unknown) {
+function nextSteps(exitCode: number | null, stderr: string, json: unknown, timedOut: boolean) {
+  if (timedOut) {
+    return ['If stdout/stderr contains a verification URL, open it in a browser and complete the flow.'];
+  }
+
   if (exitCode === 0) {
     return json === null ? ['Output was not JSON; inspect stdout text.'] : [];
   }
@@ -191,6 +217,10 @@ function nextSteps(exitCode: number | null, stderr: string, json: unknown) {
     return ['Run lark_cli_auth_status. If not logged in, use lark-cli auth login --recommend.'];
   }
   return ['Run lark_cli_help for the service or lark_cli_schema for the API method.'];
+}
+
+function appendLine(text: string, line: string) {
+  return text ? `${text.replace(/\s+$/, '')}\n${line}` : line;
 }
 
 async function prepareCliHome() {

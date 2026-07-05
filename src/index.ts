@@ -22,6 +22,7 @@ const resultShape = {
   stderr: z.string(),
   json: z.unknown().nullable(),
   truncated: z.boolean(),
+  timedOut: z.boolean(),
   risk: z.string(),
   nextSteps: z.array(z.string())
 };
