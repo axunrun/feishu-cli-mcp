@@ -25,8 +25,7 @@ COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
-RUN mkdir -p /data/lark-cli && chown -R node:node /data /app
-USER node
+RUN mkdir -p /data/lark-cli
 
 EXPOSE 3333
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
