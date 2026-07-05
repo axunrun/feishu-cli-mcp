@@ -1,0 +1,12 @@
+services:
+  feishu-cli-mcp:
+    build: .
+    image: feishu-cli-mcp:latest
+    container_name: feishu-cli-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "3333:3333"
+    volumes:
+      - ./data/lark-cli:/data/lark-cli
